@@ -12,7 +12,6 @@ import java.awt.*;
 
 public class PluginSettingsConfigurable implements Configurable {
     private JTextField urlField;
-    private JPanel mainPanel;
 
     final static String defaultUrl = "http://localhost:8088/auto/run";
 
@@ -26,7 +25,7 @@ public class PluginSettingsConfigurable implements Configurable {
     @Override
     public JComponent createComponent() {
         urlField = new JTextField(25);  // Set width of the text field
-        mainPanel = new JPanel(new FlowLayout(FlowLayout.LEFT)); // Set layout to left-align
+        JPanel mainPanel = new JPanel(new FlowLayout(FlowLayout.LEFT)); // Set layout to left-align
         mainPanel.add(new JLabel("Run Automation API Endpoint:"));
         mainPanel.add(urlField);
         return mainPanel;

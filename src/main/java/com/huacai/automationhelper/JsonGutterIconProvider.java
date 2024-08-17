@@ -35,8 +35,10 @@ import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.Objects;
 
 
 public class JsonGutterIconProvider implements LineMarkerProvider {
@@ -51,8 +53,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
             // 检查文件类型是否为 JSON
 
             // 检查 PsiElement 是否是 JSON 属性
-            if (element instanceof JsonProperty) {
-                JsonProperty property = (JsonProperty) element;
+            if (element instanceof JsonProperty property) {
                 String key = property.getName();
                 if ("automationName".equals(key) || "caseName".equals(key)) {
                     return new LineMarkerInfo<>(element, element.getTextRange(), IconLoader.getIcon("/META-INF/pluginIcon.svg", getClass()), // 使用 IconLoader 加载图标
@@ -60,7 +61,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                         try {
                             if ("automationName".equals(key)) {
                                 // 初始化的时候刷新这个值, 文件内容有变化时，更新这个值
-                                automationNameValue = property.getValue().getText().replace("\"", "");
+                                automationNameValue = Objects.requireNonNull(property.getValue()).getText().replace("\"", "");
                             }
                             // 获取键的值
                             String value = property.getValue() != null ? property.getValue().getText().replace("\"", "") : "null";
@@ -69,9 +70,11 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
 
                             if ("caseName".equals(key)) {
                                 assert extracted != null;
+                                assert editor != null;
                                 HintManager.getInstance().showInformationHint(editor, "只发送caseName: " + value);
                                 extracted = filterJsonByCaseName(extracted, value);
                             } else {
+                                assert editor != null;
                                 HintManager.getInstance().showInformationHint(editor, "发送整个automationName: " + value);
                             }
                             String url = PropertiesComponent.getInstance().getValue("plugin.api.url");
@@ -100,6 +103,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
 
                         } catch (Exception ex) {
                             Editor editor = PsiEditorUtil.findEditor(element);
+                            assert editor != null;
                             HintManager.getInstance().showErrorHint(editor, "请求失败，请检查网络连接或URL是否正确, " + Arrays.toString(ex.getStackTrace()));
                         }
                     }, GutterIconRenderer.Alignment.LEFT);
@@ -172,7 +176,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
 
         // 将 JsonObject 转换为字符串并写入输出流
         try (OutputStream os = connection.getOutputStream()) {
-            byte[] input = body.toString().getBytes("utf-8");
+            byte[] input = body.toString().getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
         } catch (IOException e) {
             System.out.printf("URL: %s Call API Error writing to output stream: %n", urlString);
@@ -186,7 +190,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
 
         // 如果请求成功，读取响应内容
         if (responseCode == HttpURLConnection.HTTP_OK) { // HTTP 200 OK
-            try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream(), "utf-8"))) {
+            try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
                 StringBuilder response = new StringBuilder();
                 String line;
 
