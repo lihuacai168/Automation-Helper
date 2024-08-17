@@ -14,7 +14,7 @@
          Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
          Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description><![CDATA[
-   hello......................................................
+   Automation Helper is a plugin for IntelliJ IDEA. It helps you to run automation test cases.
   ]]></description>
 
     <!-- Product and plugin compatibility requirements.
