@@ -25,7 +25,13 @@
     <!-- Extension points defined by the plugin.
          Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
-      <codeInsight.lineMarkerProvider language="JSON" implementationClass="com.huacai.automationhelper.JsonGutterIconProvider"/>
+        <codeInsight.lineMarkerProvider language="JSON"
+                                        implementationClass="com.huacai.automationhelper.JsonGutterIconProvider"/>
+        <applicationConfigurable id="com.huacai.automation.helper.PluginSettingsConfigurable"
+                                 instance="com.huacai.automationhelper.PluginSettingsConfigurable"
+                                 displayName="Automation Helper Settings"/>
+
+
     </extensions>
 
 </idea-plugin>
