@@ -70,48 +70,33 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                             consoleView = getConsoleView(element);
 
                             // 获取键的值
-                            String value = property.getValue() != null ? property.getValue().getText().replace("\"", "") : "null";
+                            String caseName = property.getValue() != null ? property.getValue().getText().replace("\"", "") : "null";
                             JsonElement extracted = file2JsonObject(element);
                             Editor editor = PsiEditorUtil.findEditor(element);
 
                             if ("caseName".equals(key)) {
                                 assert extracted != null;
                                 assert editor != null;
-                                HintManager.getInstance().showInformationHint(editor, "只发送caseName: " + value);
-                                extracted = filterJsonByCaseName(extracted, value);
+                                HintManager.getInstance().showInformationHint(editor, "只发送caseName: " + caseName);
+                                extracted = filterJsonByCaseName(extracted, caseName);
                             } else {
                                 assert editor != null;
-                                HintManager.getInstance().showInformationHint(editor, "发送整个automationName: " + value);
+                                HintManager.getInstance().showInformationHint(editor, "发送整个automationName: " + automationNameValue);
                             }
                             String url = PropertiesComponent.getInstance().getValue("plugin.api.url");
                             assert extracted != null;
-                            JsonObject jsonObject = sendPostRequest(url, extracted.getAsJsonObject());
-                            // 反序列为Result<RunAutomationReportDto>
-                            Result<RunAutomationReportDto> result = new Gson().fromJson(jsonObject, new TypeToken<Result<RunAutomationReportDto>>() {
-                            }.getType());
-                            // 输出data最外层的allSuccess
-                            // 输出reports每个对象的allSuccess和caseName，以及对象下面每个steps的step和result
-                            if (result != null && result.getData() != null) {
-                                RunAutomationReportDto data = result.getData();
-                                consoleView.print(String.format("automationName: %s, caseName: %s, allSuccess: %s\n", automationNameValue, value, data.getAllSuccess()), data.getAllSuccess() ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
-                                data.getReports().forEach(report -> {
-                                    consoleView.print(String.format("caseName: %s, allSuccess: %s\n", report.getCaseName(), report.getAllSuccess()), ConsoleViewContentType.NORMAL_OUTPUT);
-                                    report.getSteps().forEach(step -> {
-                                        // 如果step.result不是"success"，就输出为ERROR
-                                        consoleView.print(String.format("step: %s, result: %s\n", step.getStep(), step.getResult()), step.getResult().equals("success") ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
-                                    });
-                                });
-                            };
-
+                            JsonObject requestBody = extracted.getAsJsonObject();
                             // 检查 useInputData 是否存在并且是否为 true
-                            if (!jsonObject.has("useInputData") || !jsonObject.get("useInputData").getAsBoolean()) {
+                            if (!requestBody.has("useInputData") || !requestBody.get("useInputData").getAsBoolean()) {
                                 // 如果不存在或者为 false，则设置为 true
-                                jsonObject.add("useInputData", new JsonPrimitive(true));
+                                consoleView.print(separator + "\n" + "自动赋值useInputData为true" + "\n", ConsoleViewContentType.LOG_WARNING_OUTPUT);
+                                requestBody.add("useInputData", new JsonPrimitive(true));
                             }
-
-                            String htmlFormattedJson = "响应body: \n" + getFormattedJson(jsonObject) + "\n";
-
+                            JsonObject respJson = sendPostRequest(url, requestBody);
+                            String htmlFormattedJson = "响应body: \n" + getFormattedJson(respJson) + "\n";
                             consoleView.print(htmlFormattedJson, ConsoleViewContentType.NORMAL_OUTPUT);
+                            consoleView.print(String.format("%s运行结果统计%s\n", separator, separator), ConsoleViewContentType.LOG_WARNING_OUTPUT);
+                            summaryRespAndPrint2Console(respJson);
 
 
                         } catch (Exception ex) {
@@ -128,6 +113,35 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         }
         return null;
     }
+
+    private void summaryRespAndPrint2Console(JsonObject respJson) {
+        // 反序列为Result<RunAutomationReportDto>
+        Result<RunAutomationReportDto> result = new Gson().fromJson(respJson, new TypeToken<Result<RunAutomationReportDto>>() {
+        }.getType());
+        // 输出data最外层的allSuccess
+        // 输出reports每个对象的allSuccess和caseName，以及对象下面每个steps的step和result
+        if (result != null && result.getData() != null) {
+            RunAutomationReportDto data = result.getData();
+            consoleView.print(String.format("automationName: %s, allSuccess: %s\n", automationNameValue, resultFormat(data.getAllSuccess().toString())), data.getAllSuccess() ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
+            data.getReports().forEach(report -> {
+                consoleView.print(String.format("%s caseName: %s, allSuccess: %s%s\n", separator, report.getCaseName(), resultFormat(report.getAllSuccess().toString()), separator), ConsoleViewContentType.NORMAL_OUTPUT);
+                report.getSteps().forEach(step -> {
+                    // 如果step.result不是"success"，就输出为ERROR
+                    consoleView.print(String.format("step: %s, result: %s\n", step.getStep(), resultFormat(step.getResult())), step.getResult().equals("success") ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
+                });
+            });
+        }
+    }
+
+    private static String resultFormat(String s) {
+        return switch (s) {
+            case "success", "true" -> s + " ✅";
+            case "fail", "false" -> s + " ❌";
+            case "skip" -> s + " ⚠️";
+            default -> s;
+        };
+    }
+
 
     private static String getFormattedJson(JsonObject jsonObject) {
         Gson gson = new GsonBuilder().setPrettyPrinting().create();
@@ -205,7 +219,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         // 允许写入输出流
         connection.setDoOutput(true);
 
-        consoleView.print(separator + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
+        consoleView.print("\n", ConsoleViewContentType.NORMAL_OUTPUT);
         LocalDateTime currentTime = LocalDateTime.now();
         String requestInfo = String.format("时间: %s 请求url: %s%n", currentTime.toString().substring(0, 19), url);
         consoleView.print(requestInfo, ConsoleViewContentType.NORMAL_OUTPUT);
