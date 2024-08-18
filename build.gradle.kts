@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.huacai"
-version = "1.0-SNAPSHOT"
+version = "1.0-RELEASE"
 
 repositories {
 //    mavenCentral()
@@ -36,7 +36,7 @@ tasks {
     }
 
     patchPluginXml {
-        sinceBuild.set("232")
+        sinceBuild.set("213")
         untilBuild.set("242.*")
     }
 
@@ -50,3 +50,4 @@ tasks {
         token.set(System.getenv("PUBLISH_TOKEN"))
     }
 }
+

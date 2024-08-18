@@ -31,7 +31,10 @@
                                  instance="com.huacai.automationhelper.PluginSettingsConfigurable"
                                  displayName="Automation Helper Settings"/>
 
-
+        <toolWindow id="Automation"
+                    anchor="bottom"
+                    factoryClass="com.huacai.automationhelper.AutomationToolWindowFactory"
+                    icon="AllIcons.Toolwindows.ToolWindowMessages"/>
     </extensions>
 
 </idea-plugin>

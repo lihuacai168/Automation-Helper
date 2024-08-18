@@ -4,23 +4,21 @@ import com.google.common.reflect.TypeToken;
 import com.google.gson.*;
 import com.huacai.automationhelper.framework.dto.Result;
 import com.huacai.automationhelper.framework.dto.RunAutomationReportDto;
+import com.intellij.codeInsight.daemon.GutterIconNavigationHandler;
 import com.intellij.codeInsight.daemon.LineMarkerInfo;
 import com.intellij.codeInsight.daemon.LineMarkerProvider;
 import com.intellij.codeInsight.hint.HintManager;
+import com.intellij.codeInsight.navigation.NavigationGutterIconBuilder;
 import com.intellij.execution.filters.TextConsoleBuilderFactory;
 import com.intellij.execution.ui.ConsoleView;
 import com.intellij.execution.ui.ConsoleViewContentType;
-import com.intellij.icons.AllIcons;
 import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.json.psi.JsonFile;
 import com.intellij.json.psi.JsonProperty;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.markup.GutterIconRenderer;
 import com.intellij.openapi.util.IconLoader;
-import com.intellij.openapi.wm.RegisterToolWindowTask;
-import com.intellij.openapi.wm.ToolWindow;
-import com.intellij.openapi.wm.ToolWindowAnchor;
-import com.intellij.openapi.wm.ToolWindowManager;
+import com.intellij.openapi.wm.*;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.util.PsiEditorUtil;
@@ -36,6 +34,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -59,17 +58,18 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
             // 检查 PsiElement 是否是 JSON 属性
             if (element instanceof JsonProperty property) {
                 String key = property.getName();
+                // 初始化automationNameValue，避免直接点击caseName，导致automationNameValue为null
+                if ("automationName".equals(key)) {
+                    automationNameValue = Objects.requireNonNull(property.getValue()).getText().replace("\"", "");
+                }
                 if ("automationName".equals(key) || "caseName".equals(key)) {
-                    return new LineMarkerInfo<>(element, element.getTextRange(), IconLoader.getIcon("/META-INF/pluginIcon.svg", getClass()), // 使用 IconLoader 加载图标
-                            null, (e, elt) -> {
+                    GutterIconNavigationHandler<PsiElement> navigationHandler = (e, elt) -> {
                         try {
                             if ("automationName".equals(key)) {
-                                // 初始化的时候刷新这个值, 文件内容有变化时，更新这个值
                                 automationNameValue = Objects.requireNonNull(property.getValue()).getText().replace("\"", "");
                             }
                             consoleView = getConsoleView(element);
 
-                            // 获取键的值
                             String caseName = property.getValue() != null ? property.getValue().getText().replace("\"", "") : "null";
                             JsonElement extracted = file2JsonObject(element);
                             Editor editor = PsiEditorUtil.findEditor(element);
@@ -87,28 +87,34 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                             assert extracted != null;
                             JsonObject requestBody = extracted.getAsJsonObject();
                             consoleView.print(separator + "开始运行自动化测试" + separator + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
-                            // 检查 useInputData 是否存在并且是否为 true
                             if (!requestBody.has("useInputData") || !requestBody.get("useInputData").getAsBoolean()) {
-                                // 如果不存在或者为 false，则设置为 true
                                 consoleView.print("插件自动赋值请求体的useInputData字段为true" + "\n", ConsoleViewContentType.LOG_WARNING_OUTPUT);
                                 requestBody.add("useInputData", new JsonPrimitive(true));
                             }
                             JsonObject respJson = sendPostRequest(url, requestBody);
-                            String htmlFormattedJson = "响应body: \n" + getFormattedJson(respJson) + "\n";
-                            consoleView.print(htmlFormattedJson, ConsoleViewContentType.NORMAL_OUTPUT);
-                            consoleView.print(String.format("%s运行结果统计%s\n", separator, separator), ConsoleViewContentType.LOG_WARNING_OUTPUT);
-                            summaryRespAndPrint2Console(respJson);
-
+                            String FormattedJsonResp = "响应body: \n" + getFormattedJson(respJson) + "\n";
+                            consoleView.print(FormattedJsonResp, ConsoleViewContentType.NORMAL_OUTPUT);
+                            if (!respJson.get("data").isJsonNull()) {
+                                consoleView.print(String.format("%s运行结果统计%s\n", separator, separator), ConsoleViewContentType.LOG_WARNING_OUTPUT);
+                                summaryRespAndPrint2Console(respJson);
+                            }
 
                         } catch (Exception ex) {
                             for (StackTraceElement stackTraceElement : ex.getStackTrace()) {
                                 consoleView.print(stackTraceElement.toString() + "\n", ConsoleViewContentType.ERROR_OUTPUT);
                             }
                             consoleView.print(String.format("请求失败，请检查网络连接或URL是否正确, url: %s \n", PropertiesComponent.getInstance().getValue("plugin.api.url")), ConsoleViewContentType.ERROR_OUTPUT);
-
-
                         }
-                    }, GutterIconRenderer.Alignment.LEFT);
+                    };
+
+                    Icon icon = IconLoader.getIcon("/META-INF/pluginIcon.svg", getClass());
+                    NavigationGutterIconBuilder<PsiElement> builder = NavigationGutterIconBuilder.create(icon)
+                            .setTarget(element)
+                            .setTooltipText("Run automation")
+                            .setAlignment(GutterIconRenderer.Alignment.LEFT)
+                            .setPopupTitle("Automation Case Navigation");
+
+                    return builder.createLineMarkerInfo(element, navigationHandler);
                 }
             }
         }
@@ -149,10 +155,6 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         return gson.toJson(jsonObject);
     }
 
-    private void print2NormalConsole(@NotNull PsiElement element, String htmlFormattedJson) {
-        ConsoleView consoleView = getConsoleView(element);
-        consoleView.print(htmlFormattedJson + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
-    }
 
     private @NotNull ConsoleView getConsoleView(@NotNull PsiElement element) {
         Project project = element.getProject();
@@ -206,9 +208,27 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
     public JsonObject sendPostRequest(String urlString, JsonObject body) throws Exception {
         // 创建 URL 对象
         URL url = new URL(urlString);
+        consoleView.print("\n", ConsoleViewContentType.NORMAL_OUTPUT);
+        LocalDateTime currentTime = LocalDateTime.now();
+        String requestInfo = String.format("时间: %s 请求url: %s%n", currentTime.toString().substring(0, 19), url);
+        consoleView.print(requestInfo, ConsoleViewContentType.NORMAL_OUTPUT);
 
+        HttpURLConnection connection;
         // 打开与该 URL 的连接
-        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        try {
+            connection = (HttpURLConnection) url.openConnection();
+            connection.setConnectTimeout(5000);
+            // 设置请求超时时间为 5 秒
+        }
+        // 捕获超时异常
+        catch (ConnectException e) {
+            consoleView.print(String.format("URL: %s Connect Timeout: %s %n", urlString, e.getMessage()), ConsoleViewContentType.ERROR_OUTPUT);
+            throw e;
+        } catch (IOException e) {
+            consoleView.print(String.format("URL: %s Call API Error: %s %n", urlString, e.getMessage()), ConsoleViewContentType.ERROR_OUTPUT);
+            // 往上抛出
+            throw e;
+        }
 
         // 设置请求方法为 POST
         connection.setRequestMethod("POST");
@@ -220,10 +240,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         // 允许写入输出流
         connection.setDoOutput(true);
 
-        consoleView.print("\n", ConsoleViewContentType.NORMAL_OUTPUT);
-        LocalDateTime currentTime = LocalDateTime.now();
-        String requestInfo = String.format("时间: %s 请求url: %s%n", currentTime.toString().substring(0, 19), url);
-        consoleView.print(requestInfo, ConsoleViewContentType.NORMAL_OUTPUT);
+
         consoleView.print("发送请求body: " + body.toString() + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
         // 将 JsonObject 转换为字符串并写入输出流
         try (OutputStream os = connection.getOutputStream()) {
@@ -261,12 +278,8 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
         ToolWindow toolWindow = toolWindowManager.getToolWindow("Automation");
 
-        // 如果 ToolWindow 不存在，则注册一个新的 ToolWindow
-        if (toolWindow == null) {
-            toolWindow = toolWindowManager.registerToolWindow(RegisterToolWindowTask.closable("Automation", AllIcons.Toolwindows.ToolWindowMessages, ToolWindowAnchor.BOTTOM));
-        }
-
         // 确保 ToolWindow 是可见的
+        assert toolWindow != null;
         if (!toolWindow.isVisible()) {
             toolWindow.show(null);
         }
@@ -304,24 +317,6 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
 
     private static @NotNull String getConsoleName(String automationName) {
         return "Console-" + automationName;
-    }
-
-    private void switchToConsole(Project project, String automationName) {
-        ToolWindowManager toolWindowManager = ToolWindowManager.getInstance(project);
-        ToolWindow toolWindow = toolWindowManager.getToolWindow("Automation");
-
-        if (toolWindow != null) {
-            // 激活工具窗口
-            toolWindow.activate(() -> {
-                ContentManager contentManager = toolWindow.getContentManager();
-                for (Content content : contentManager.getContents()) {
-                    if (content.getDisplayName().equals(getConsoleName(automationName))) {
-                        contentManager.setSelectedContent(content);
-                        break;
-                    }
-                }
-            });
-        }
     }
 
 
