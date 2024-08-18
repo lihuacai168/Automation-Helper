@@ -13,7 +13,7 @@ import java.awt.*;
 public class PluginSettingsConfigurable implements Configurable {
     private JTextField urlField;
 
-    final static String defaultUrl = "http://localhost:8088/auto/run";
+    final static String defaultUrl = "http://127.0.0.1:8088/auto/run";
 
     @Nls(capitalization = Nls.Capitalization.Title)
     @Override

@@ -1,6 +1,9 @@
 package com.huacai.automationhelper;
 
+import com.google.common.reflect.TypeToken;
 import com.google.gson.*;
+import com.huacai.automationhelper.framework.dto.Result;
+import com.huacai.automationhelper.framework.dto.RunAutomationReportDto;
 import com.intellij.codeInsight.daemon.LineMarkerInfo;
 import com.intellij.codeInsight.daemon.LineMarkerProvider;
 import com.intellij.codeInsight.hint.HintManager;
@@ -37,12 +40,13 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
-import java.util.Arrays;
 import java.util.Objects;
 
 
 public class JsonGutterIconProvider implements LineMarkerProvider {
     String automationNameValue = null;
+    ConsoleView consoleView;
+    final static String separator = "-----------------------------------------------------------------------------------";
 
     @Nullable
     @Override
@@ -63,6 +67,8 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                                 // 初始化的时候刷新这个值, 文件内容有变化时，更新这个值
                                 automationNameValue = Objects.requireNonNull(property.getValue()).getText().replace("\"", "");
                             }
+                            consoleView = getConsoleView(element);
+
                             // 获取键的值
                             String value = property.getValue() != null ? property.getValue().getText().replace("\"", "") : "null";
                             JsonElement extracted = file2JsonObject(element);
@@ -80,37 +86,62 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                             String url = PropertiesComponent.getInstance().getValue("plugin.api.url");
                             assert extracted != null;
                             JsonObject jsonObject = sendPostRequest(url, extracted.getAsJsonObject());
+                            // 反序列为Result<RunAutomationReportDto>
+                            Result<RunAutomationReportDto> result = new Gson().fromJson(jsonObject, new TypeToken<Result<RunAutomationReportDto>>() {
+                            }.getType());
+                            // 输出data最外层的allSuccess
+                            // 输出reports每个对象的allSuccess和caseName，以及对象下面每个steps的step和result
+                            if (result != null && result.getData() != null) {
+                                RunAutomationReportDto data = result.getData();
+                                consoleView.print(String.format("automationName: %s, caseName: %s, allSuccess: %s\n", automationNameValue, value, data.getAllSuccess()), data.getAllSuccess() ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
+                                data.getReports().forEach(report -> {
+                                    consoleView.print(String.format("caseName: %s, allSuccess: %s\n", report.getCaseName(), report.getAllSuccess()), ConsoleViewContentType.NORMAL_OUTPUT);
+                                    report.getSteps().forEach(step -> {
+                                        // 如果step.result不是"success"，就输出为ERROR
+                                        consoleView.print(String.format("step: %s, result: %s\n", step.getStep(), step.getResult()), step.getResult().equals("success") ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
+                                    });
+                                });
+                            };
 
                             // 检查 useInputData 是否存在并且是否为 true
                             if (!jsonObject.has("useInputData") || !jsonObject.get("useInputData").getAsBoolean()) {
                                 // 如果不存在或者为 false，则设置为 true
                                 jsonObject.add("useInputData", new JsonPrimitive(true));
                             }
-                            // 创建一个带有漂亮打印功能的 Gson 实例
-                            Gson gson = new GsonBuilder().setPrettyPrinting().create();
-                            String formattedJson = gson.toJson(jsonObject);
 
-                            LocalDateTime currentTime = LocalDateTime.now();
-                            String requestInfo = String.format("时间: %s 请求url: %s%n", currentTime.toString().substring(0, 19), url);
-                            String htmlFormattedJson = requestInfo + "响应: \n" + formattedJson + "\n";
+                            String htmlFormattedJson = "响应body: \n" + getFormattedJson(jsonObject) + "\n";
 
-                            // 输出到 Console
-                            Project project = element.getProject();
-                            ConsoleView consoleView = getOrCreateConsole(project, automationNameValue);
-                            switchToConsole(project, automationNameValue);
-                            consoleView.print(htmlFormattedJson + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
+                            consoleView.print(htmlFormattedJson, ConsoleViewContentType.NORMAL_OUTPUT);
 
 
                         } catch (Exception ex) {
-                            Editor editor = PsiEditorUtil.findEditor(element);
-                            assert editor != null;
-                            HintManager.getInstance().showErrorHint(editor, "请求失败，请检查网络连接或URL是否正确, " + Arrays.toString(ex.getStackTrace()));
+                            for (StackTraceElement stackTraceElement : ex.getStackTrace()) {
+                                consoleView.print(stackTraceElement.toString() + "\n", ConsoleViewContentType.ERROR_OUTPUT);
+                            }
+                            consoleView.print(String.format("请求失败，请检查网络连接或URL是否正确, url: %s \n", PropertiesComponent.getInstance().getValue("plugin.api.url")), ConsoleViewContentType.ERROR_OUTPUT);
+
+
                         }
                     }, GutterIconRenderer.Alignment.LEFT);
                 }
             }
         }
         return null;
+    }
+
+    private static String getFormattedJson(JsonObject jsonObject) {
+        Gson gson = new GsonBuilder().setPrettyPrinting().create();
+        return gson.toJson(jsonObject);
+    }
+
+    private void print2NormalConsole(@NotNull PsiElement element, String htmlFormattedJson) {
+        ConsoleView consoleView = getConsoleView(element);
+        consoleView.print(htmlFormattedJson + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
+    }
+
+    private @NotNull ConsoleView getConsoleView(@NotNull PsiElement element) {
+        Project project = element.getProject();
+        return getOrCreateConsole(project, automationNameValue);
     }
 
     // 过滤方法，根据传入的 caseName 过滤 JSON
@@ -174,16 +205,20 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         // 允许写入输出流
         connection.setDoOutput(true);
 
+        consoleView.print(separator + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
+        LocalDateTime currentTime = LocalDateTime.now();
+        String requestInfo = String.format("时间: %s 请求url: %s%n", currentTime.toString().substring(0, 19), url);
+        consoleView.print(requestInfo, ConsoleViewContentType.NORMAL_OUTPUT);
+        consoleView.print("发送请求body: " + body.toString() + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
         // 将 JsonObject 转换为字符串并写入输出流
         try (OutputStream os = connection.getOutputStream()) {
             byte[] input = body.toString().getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
         } catch (IOException e) {
-            System.out.printf("URL: %s Call API Error writing to output stream: %n", urlString);
+            consoleView.print(String.format("URL: %s Call API Error: %s %n", urlString, e.getMessage()), ConsoleViewContentType.ERROR_OUTPUT);
             // 往上抛出
             throw e;
         }
-
 
         // 读取响应码（触发实际的请求发送）
         int responseCode = connection.getResponseCode();
@@ -202,7 +237,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                 return JsonParser.parseString(response.toString()).getAsJsonObject();
             }
         } else {
-            System.out.println("POST request failed with response code: " + responseCode);
+            consoleView.print(String.format("URL: %s Call API Error: %s %n", urlString, responseCode), ConsoleViewContentType.ERROR_OUTPUT);
             return null;
         }
     }
@@ -247,6 +282,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         ContentFactory contentFactory = ContentFactory.getInstance();
         Content content = contentFactory.createContent(consoleView.getComponent(), getConsoleName(automationName), false);
         contentManager.addContent(content);
+        contentManager.setSelectedContent(content);
 
         return consoleView;
     }
