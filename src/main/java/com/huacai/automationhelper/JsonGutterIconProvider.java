@@ -86,10 +86,11 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                             String url = PropertiesComponent.getInstance().getValue("plugin.api.url");
                             assert extracted != null;
                             JsonObject requestBody = extracted.getAsJsonObject();
+                            consoleView.print(separator + "开始运行自动化测试" + separator + "\n", ConsoleViewContentType.NORMAL_OUTPUT);
                             // 检查 useInputData 是否存在并且是否为 true
                             if (!requestBody.has("useInputData") || !requestBody.get("useInputData").getAsBoolean()) {
                                 // 如果不存在或者为 false，则设置为 true
-                                consoleView.print(separator + "\n" + "自动赋值useInputData为true" + "\n", ConsoleViewContentType.LOG_WARNING_OUTPUT);
+                                consoleView.print("插件自动赋值请求体的useInputData字段为true" + "\n", ConsoleViewContentType.LOG_WARNING_OUTPUT);
                                 requestBody.add("useInputData", new JsonPrimitive(true));
                             }
                             JsonObject respJson = sendPostRequest(url, requestBody);
