@@ -107,7 +107,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                         }
                     };
 
-                    Icon icon = IconLoader.getIcon("/META-INF/pluginIcon.svg", getClass());
+                    Icon icon = IconLoader.getIcon(getSvgPathByKey(key), getClass());
                     NavigationGutterIconBuilder<PsiElement> builder = NavigationGutterIconBuilder.create(icon)
                             .setTarget(element)
                             .setTooltipText("Run automation")
@@ -119,6 +119,20 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
             }
         }
         return null;
+    }
+    private static  String getSvgPathByKey(String key) {
+        String svgPath = null;
+        switch (key) {
+            case "automationName":
+                svgPath = "/META-INF/automation.svg";
+                break;
+            case "caseName":
+                svgPath = "/META-INF/case.svg";
+                break;
+            default:
+                break;
+        }
+        return svgPath;
     }
 
     private void summaryRespAndPrint2Console(JsonObject respJson) {
