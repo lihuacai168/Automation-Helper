@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.huacai"
-version = "1.0.1-RELEASE"
+version = "1.0.2-RELEASE"
 
 repositories {
 //    mavenCentral()
