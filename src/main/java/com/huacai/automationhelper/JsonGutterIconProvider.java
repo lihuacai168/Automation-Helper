@@ -40,6 +40,7 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 
 
 public class JsonGutterIconProvider implements LineMarkerProvider {
@@ -69,11 +70,11 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                                 automationNameValue = Objects.requireNonNull(property.getValue()).getText().replace("\"", "");
                             }
                             consoleView = getConsoleView(element);
-
+                    
                             String caseName = property.getValue() != null ? property.getValue().getText().replace("\"", "") : "null";
                             JsonElement extracted = file2JsonObject(element);
                             Editor editor = PsiEditorUtil.findEditor(element);
-
+                    
                             if ("caseName".equals(key)) {
                                 assert extracted != null;
                                 assert editor != null;
@@ -91,14 +92,25 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                                 consoleView.print("插件自动赋值请求体的useInputData字段为true" + "\n", ConsoleViewContentType.LOG_WARNING_OUTPUT);
                                 requestBody.add("useInputData", new JsonPrimitive(true));
                             }
-                            JsonObject respJson = sendPostRequest(url, requestBody);
-                            String FormattedJsonResp = "响应body: \n" + getFormattedJson(respJson) + "\n";
-                            consoleView.print(FormattedJsonResp, ConsoleViewContentType.NORMAL_OUTPUT);
-                            if (!respJson.get("data").isJsonNull()) {
-                                consoleView.print(String.format("%s运行结果统计%s\n", separator, separator), ConsoleViewContentType.LOG_WARNING_OUTPUT);
-                                summaryRespAndPrint2Console(respJson);
-                            }
-
+                            
+                            // 异步发送 HTTP 请求
+                            CompletableFuture.runAsync(() -> {
+                                try {
+                                    JsonObject respJson = sendPostRequest(url, requestBody);
+                                    String formattedJsonResp = "响应body: \n" + getFormattedJson(respJson) + "\n";
+                                    consoleView.print(formattedJsonResp, ConsoleViewContentType.NORMAL_OUTPUT);
+                                    if (!respJson.get("data").isJsonNull()) {
+                                        consoleView.print(String.format("%s运行结果统计%s\n", separator, separator), ConsoleViewContentType.LOG_WARNING_OUTPUT);
+                                        summaryRespAndPrint2Console(respJson);
+                                    }
+                                } catch (Exception ex) {
+                                    for (StackTraceElement stackTraceElement : ex.getStackTrace()) {
+                                        consoleView.print(stackTraceElement.toString() + "\n", ConsoleViewContentType.ERROR_OUTPUT);
+                                    }
+                                    consoleView.print(String.format("请求失败，请检查网络连接或URL是否正确, url: %s \n", PropertiesComponent.getInstance().getValue("plugin.api.url")), ConsoleViewContentType.ERROR_OUTPUT);
+                                }
+                            });
+                    
                         } catch (Exception ex) {
                             for (StackTraceElement stackTraceElement : ex.getStackTrace()) {
                                 consoleView.print(stackTraceElement.toString() + "\n", ConsoleViewContentType.ERROR_OUTPUT);
@@ -106,6 +118,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                             consoleView.print(String.format("请求失败，请检查网络连接或URL是否正确, url: %s \n", PropertiesComponent.getInstance().getValue("plugin.api.url")), ConsoleViewContentType.ERROR_OUTPUT);
                         }
                     };
+                    
 
                     Icon icon = IconLoader.getIcon(getSvgPathByKey(key), getClass());
                     NavigationGutterIconBuilder<PsiElement> builder = NavigationGutterIconBuilder.create(icon)
