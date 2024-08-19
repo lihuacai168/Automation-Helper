@@ -161,7 +161,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                 consoleView.print(String.format("%s caseName: %s, allSuccess: %s%s\n", separator, report.getCaseName(), resultFormat(report.getAllSuccess().toString()), separator), ConsoleViewContentType.NORMAL_OUTPUT);
                 report.getSteps().forEach(step -> {
                     // 如果step.result不是"success"，就输出为ERROR
-                    consoleView.print(String.format("step: %s, result: %s\n", step.getStep(), resultFormat(step.getResult())), step.getResult().equals("success") ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
+                    consoleView.print(String.format("step: %s, result: %s, error: %s\n", step.getStep(), resultFormat(step.getResult()), step.getError()), step.getResult().equals("success") ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
                 });
             });
         }
