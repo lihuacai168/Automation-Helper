@@ -41,6 +41,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 
 public class JsonGutterIconProvider implements LineMarkerProvider {
@@ -70,11 +71,11 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                                 automationNameValue = Objects.requireNonNull(property.getValue()).getText().replace("\"", "");
                             }
                             consoleView = getConsoleView(element);
-                    
+
                             String caseName = property.getValue() != null ? property.getValue().getText().replace("\"", "") : "null";
                             JsonElement extracted = file2JsonObject(element);
                             Editor editor = PsiEditorUtil.findEditor(element);
-                    
+
                             if ("caseName".equals(key)) {
                                 assert extracted != null;
                                 assert editor != null;
@@ -92,7 +93,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                                 consoleView.print("插件自动赋值请求体的useInputData字段为true" + "\n", ConsoleViewContentType.LOG_WARNING_OUTPUT);
                                 requestBody.add("useInputData", new JsonPrimitive(true));
                             }
-                            
+
                             // 异步发送 HTTP 请求
                             CompletableFuture.runAsync(() -> {
                                 try {
@@ -110,7 +111,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                                     consoleView.print(String.format("请求失败，请检查网络连接或URL是否正确, url: %s \n", PropertiesComponent.getInstance().getValue("plugin.api.url")), ConsoleViewContentType.ERROR_OUTPUT);
                                 }
                             });
-                    
+
                         } catch (Exception ex) {
                             for (StackTraceElement stackTraceElement : ex.getStackTrace()) {
                                 consoleView.print(stackTraceElement.toString() + "\n", ConsoleViewContentType.ERROR_OUTPUT);
@@ -118,7 +119,7 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
                             consoleView.print(String.format("请求失败，请检查网络连接或URL是否正确, url: %s \n", PropertiesComponent.getInstance().getValue("plugin.api.url")), ConsoleViewContentType.ERROR_OUTPUT);
                         }
                     };
-                    
+
 
                     Icon icon = IconLoader.getIcon(getSvgPathByKey(key), getClass());
                     NavigationGutterIconBuilder<PsiElement> builder = NavigationGutterIconBuilder.create(icon)
@@ -133,7 +134,8 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         }
         return null;
     }
-    private static  String getSvgPathByKey(String key) {
+
+    private static String getSvgPathByKey(String key) {
         String svgPath = null;
         switch (key) {
             case "automationName":
@@ -157,13 +159,21 @@ public class JsonGutterIconProvider implements LineMarkerProvider {
         if (result != null && result.getData() != null) {
             RunAutomationReportDto data = result.getData();
             consoleView.print(String.format("automationName: %s, allSuccess: %s\n", automationNameValue, resultFormat(data.getAllSuccess().toString())), data.getAllSuccess() ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
+            var caseSuccess = new AtomicInteger();
+            var caseFail = new AtomicInteger();
             data.getReports().forEach(report -> {
+                AtomicInteger targetCounter = report.getAllSuccess() ? caseSuccess : caseFail;
+                targetCounter.getAndIncrement();
                 consoleView.print(String.format("%s caseName: %s, allSuccess: %s%s\n", separator, report.getCaseName(), resultFormat(report.getAllSuccess().toString()), separator), ConsoleViewContentType.NORMAL_OUTPUT);
                 report.getSteps().forEach(step -> {
                     // 如果step.result不是"success"，就输出为ERROR
                     consoleView.print(String.format("step: %s, result: %s, error: %s\n", step.getStep(), resultFormat(step.getResult()), step.getError()), step.getResult().equals("success") ? ConsoleViewContentType.NORMAL_OUTPUT : ConsoleViewContentType.ERROR_OUTPUT);
                 });
+
             });
+            ConsoleViewContentType outputType = (caseFail.get() > 0) ? ConsoleViewContentType.ERROR_OUTPUT : ConsoleViewContentType.NORMAL_OUTPUT;
+            consoleView.print(String.format("%s 运行统计，automationName: %s, caseSuccess: %s, caseFail: %s%s\n", separator, automationNameValue, caseSuccess, caseFail, separator), outputType);
+
         }
     }
 
